@@ -126,15 +126,37 @@ def verify():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
+    print(f"Incoming payload: {json.dumps(data)}")
     try:
         for entry in data.get("entry", []):
-            for messaging in entry.get("messaging", []):
-                sender_id = messaging["sender"]["id"]
-                if "message" in messaging and "text" in messaging["message"]:
-                    text = messaging["message"]["text"]
-                    handle_message(sender_id, text)
+            # Instagram Business API format
+            messaging_list = entry.get("messaging", [])
+            # Also try changes format
+            if not messaging_list:
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    messaging_list = value.get("messages", [])
+                    if messaging_list:
+                        for msg in messaging_list:
+                            sender_id = msg.get("from", {}).get("id") or msg.get("sender", {}).get("id")
+                            if sender_id and msg.get("type") == "text":
+                                text = msg["text"]["body"]
+                                handle_message(sender_id, text)
+                        continue
+            for messaging in messaging_list:
+                sender = messaging.get("sender") or {}
+                sender_id = sender.get("id")
+                if not sender_id:
+                    sender_id = messaging.get("from", {}).get("id")
+                if sender_id and "message" in messaging:
+                    msg = messaging["message"]
+                    text = msg.get("text") or msg.get("body", "")
+                    if text:
+                        handle_message(sender_id, text)
     except Exception as e:
         print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
     return jsonify({"status": "ok"}), 200
 
 
