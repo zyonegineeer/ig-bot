@@ -12,16 +12,18 @@ WHATSAPP_NUMBER = "5492262316418"
 # Estado de conversación en memoria (simple)
 user_states = {}
 
-def get_message_text(mid):
+def get_message_details(mid):
     url = f"https://graph.instagram.com/v21.0/{mid}"
     params = {
-        "fields": "message",
+        "fields": "message,from",
         "access_token": ACCESS_TOKEN
     }
     r = requests.get(url, params=params)
     data = r.json()
     print(f"Message fetch response: {data}")
-    return data.get("message", "")
+    text = data.get("message", "")
+    sender_id = data.get("from", {}).get("id", "")
+    return text, sender_id
 
 def send_message(recipient_id, text):
     url = f"https://graph.instagram.com/v21.0/me/messages"
@@ -160,10 +162,9 @@ def webhook():
                     mid = msg.get("mid", "")
                     num_edit = msg.get("num_edit", 1)
                     if num_edit == 0 and mid:
-                        # This is actually a new message - fetch the text via API
-                        text = get_message_text(mid)
-                        if text:
-                            handle_message(sender_id, text)
+                        text, real_sender_id = get_message_details(mid)
+                        if text and real_sender_id:
+                            handle_message(real_sender_id, text)
 
     except Exception as e:
         print(f"Error: {e}")
