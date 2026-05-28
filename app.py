@@ -12,6 +12,17 @@ WHATSAPP_NUMBER = "5492262316418"
 # Estado de conversación en memoria (simple)
 user_states = {}
 
+def get_message_text(mid):
+    url = f"https://graph.instagram.com/v21.0/{mid}"
+    params = {
+        "fields": "message",
+        "access_token": ACCESS_TOKEN
+    }
+    r = requests.get(url, params=params)
+    data = r.json()
+    print(f"Message fetch response: {data}")
+    return data.get("message", "")
+
 def send_message(recipient_id, text):
     url = f"https://graph.instagram.com/v21.0/me/messages"
     headers = {"Content-Type": "application/json"}
@@ -129,30 +140,31 @@ def webhook():
     print(f"Incoming payload: {json.dumps(data)}")
     try:
         for entry in data.get("entry", []):
-            # Instagram Business API format
             messaging_list = entry.get("messaging", [])
-            # Also try changes format
-            if not messaging_list:
-                for change in entry.get("changes", []):
-                    value = change.get("value", {})
-                    messaging_list = value.get("messages", [])
-                    if messaging_list:
-                        for msg in messaging_list:
-                            sender_id = msg.get("from", {}).get("id") or msg.get("sender", {}).get("id")
-                            if sender_id and msg.get("type") == "text":
-                                text = msg["text"]["body"]
-                                handle_message(sender_id, text)
-                        continue
             for messaging in messaging_list:
                 sender = messaging.get("sender") or {}
                 sender_id = sender.get("id")
                 if not sender_id:
-                    sender_id = messaging.get("from", {}).get("id")
-                if sender_id and "message" in messaging:
+                    continue
+
+                # Handle regular messages
+                if "message" in messaging:
                     msg = messaging["message"]
                     text = msg.get("text") or msg.get("body", "")
                     if text:
                         handle_message(sender_id, text)
+
+                # Handle message_edit (Instagram sends new messages as edits with num_edit: 0)
+                elif "message_edit" in messaging:
+                    msg = messaging["message_edit"]
+                    mid = msg.get("mid", "")
+                    num_edit = msg.get("num_edit", 1)
+                    if num_edit == 0 and mid:
+                        # This is actually a new message - fetch the text via API
+                        text = get_message_text(mid)
+                        if text:
+                            handle_message(sender_id, text)
+
     except Exception as e:
         print(f"Error: {e}")
         import traceback
